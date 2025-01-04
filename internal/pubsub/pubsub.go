@@ -3,13 +3,24 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+type Acktype int
+
+type SimpleQueueType int
+
 const (
-	DurableQueue = iota
+	DurableQueue SimpleQueueType = iota
 	TransientQueue
+)
+
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
@@ -30,11 +41,11 @@ func DeclareAndBind(
 	exchange,
 	queueName,
 	key string,
-	simpleQueueType int, // an enum to represent "durable" or "transient"
+	simpleQueueType SimpleQueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
 	channel, err := conn.Channel()
 	if err != nil {
-		return nil, amqp.Queue{}, err
+		return nil, amqp.Queue{}, fmt.Errorf("could not create channel: %v", err)
 	}
 
 	durable := simpleQueueType == DurableQueue
@@ -45,7 +56,7 @@ func DeclareAndBind(
 	}
 	queue, err := channel.QueueDeclare(queueName, durable, autoDelete, exclusive, false, nil)
 	if err != nil {
-		return nil, amqp.Queue{}, err
+		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
 	}
 
 	err = channel.QueueBind(queueName, key, exchange, false, nil)
@@ -61,8 +72,8 @@ func SubscribeJSON[T any](
 	exchange,
 	queueName,
 	key string,
-	simpleQueueType int,
-	handler func(T),
+	simpleQueueType SimpleQueueType,
+	handler func(T) Acktype,
 ) error {
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
@@ -70,17 +81,31 @@ func SubscribeJSON[T any](
 	}
 
 	consumeChan, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("could not consume messages: %v", err)
+	}
 
 	go func() {
 		defer ch.Close()
 		for m := range consumeChan {
 			var data T
-			err := json.Unmarshal(m.Body, data)
+			err := json.Unmarshal(m.Body, &data)
 			if err != nil {
+				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			handler(data)
-			m.Ack(false)
+			ackttype := handler(data)
+			switch ackttype {
+			case Ack:
+				m.Ack(false)
+				fmt.Println("message ack")
+			case NackRequeue:
+				m.Nack(false, true)
+				fmt.Println("message nack requeue")
+			case NackDiscard:
+				m.Nack(false, false)
+				fmt.Println("message nack discard")
+			}
 
 		}
 	}()

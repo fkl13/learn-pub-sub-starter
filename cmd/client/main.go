@@ -54,6 +54,7 @@ func main() {
 			err := gameState.CommandSpawn(inputs)
 			if err != nil {
 				fmt.Printf("could not spawn unit: %v", err)
+				continue
 			}
 		case "move":
 			move, err := gameState.CommandMove(inputs)
@@ -74,7 +75,6 @@ func main() {
 			gamelogic.PrintClientHelp()
 		case "spam":
 			fmt.Println("Spamming not allowed yet!")
-
 		case "quit":
 			fmt.Println("Exiting game")
 			return
@@ -84,16 +84,27 @@ func main() {
 	}
 }
 
-func HandlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(ps routing.PlayingState) {
+func HandlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Acktype {
+	return func(ps routing.PlayingState) pubsub.Acktype {
 		defer fmt.Print("> ")
 		gs.HandlePause(ps)
+		return pubsub.Ack
 	}
 }
 
-func HandlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
-	return func(move gamelogic.ArmyMove) {
+func HandlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.Acktype {
+	return func(move gamelogic.ArmyMove) pubsub.Acktype {
 		defer fmt.Print("> ")
-		gs.HandleMove(move)
+		moveOutcome := gs.HandleMove(move)
+		switch moveOutcome {
+		case gamelogic.MoveOutComeSafe:
+			return pubsub.Ack
+		case gamelogic.MoveOutcomeMakeWar:
+			return pubsub.Ack
+		case gamelogic.MoveOutcomeSamePlayer:
+			return pubsub.NackDiscard
+		}
+		fmt.Println("unknown move outcome")
+		return pubsub.NackDiscard
 	}
 }
