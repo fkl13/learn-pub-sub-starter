@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -54,7 +55,9 @@ func DeclareAndBind(
 	if simpleQueueType == TransientQueue {
 		autoDelete, exclusive = true, true
 	}
-	queue, err := channel.QueueDeclare(queueName, durable, autoDelete, exclusive, false, nil)
+
+	table := amqp.Table{"x-dead-letter-exchange": routing.ExchangePerilDeadLetter}
+	queue, err := channel.QueueDeclare(queueName, durable, autoDelete, exclusive, false, table)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
 	}
