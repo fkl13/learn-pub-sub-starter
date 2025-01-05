@@ -44,6 +44,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not subscribe to army moves: %v", err)
 	}
+
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilTopic,
@@ -55,6 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not subscribe to war declarations: %v", err)
 	}
+
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,

@@ -115,14 +115,56 @@ func SubscribeJSON[T any](
 				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			ackttype := handler(data)
-			switch ackttype {
+			acktype := handler(data)
+			switch acktype {
 			case Ack:
 				m.Ack(false)
 			case NackRequeue:
 				m.Nack(false, true)
 			case NackDiscard:
 				m.Nack(false, false)
+			}
+		}
+	}()
+	return nil
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) Acktype,
+) error {
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		return err
+	}
+
+	consumeChan, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
+	if err != nil {
+		return fmt.Errorf("could not consume messages: %v", err)
+	}
+
+	go func() {
+		defer ch.Close()
+		for msg := range consumeChan {
+			buf := bytes.NewBuffer(msg.Body)
+			dec := gob.NewDecoder(buf)
+			var data T
+			err := dec.Decode(&data)
+			if err != nil {
+				fmt.Printf("could not decode gob message: %v\n", err)
+			}
+			acktype := handler(data)
+			switch acktype {
+			case Ack:
+				msg.Ack(false)
+			case NackRequeue:
+				msg.Nack(false, true)
+			case NackDiscard:
+				msg.Nack(false, false)
 			}
 		}
 	}()
