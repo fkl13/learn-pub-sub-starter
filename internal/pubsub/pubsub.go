@@ -101,6 +101,11 @@ func SubscribeJSON[T any](
 		return err
 	}
 
+	err = ch.Qos(10, 0, false)
+	if err != nil {
+		return fmt.Errorf("could not set prefetch count: %v", err)
+	}
+
 	consumeChan, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("could not consume messages: %v", err)
@@ -140,6 +145,11 @@ func SubscribeGob[T any](
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return err
+	}
+
+	err = ch.Qos(10, 0, false)
+	if err != nil {
+		return fmt.Errorf("could not set prefetch count: %v", err)
 	}
 
 	consumeChan, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
